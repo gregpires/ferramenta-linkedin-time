@@ -14,9 +14,14 @@ O sistema vai acionar o agente no Apify, extrair os dados e gerar um Excel para 
 """)
 
 # --- Entrada de Dados ---
-# Usamos secrets para não expor a senha no código
-api_token = st.secrets["APIFY_TOKEN"] 
-actor_id = "datadoping/linkedin-post-comments-scraper" # ID do ator do seu print
+# Tenta pegar o token dos segredos. Se não existir, avisa o usuário.
+if "APIFY_TOKEN" in st.secrets:
+    api_token = st.secrets["APIFY_TOKEN"]
+else:
+    st.error("ERRO: O Token do Apify não foi configurado nos 'Secrets' do Streamlit.")
+    st.stop()
+
+actor_id = "datadoping/linkedin-post-comments-scraper" # ID do ator correto
 
 url_input = st.text_input("🔗 Link do Post do LinkedIn:", placeholder="https://www.linkedin.com/posts/...")
 
@@ -32,16 +37,17 @@ if st.button("🚀 Extrair Dados", type="primary"):
             # 1. Conexão
             client = ApifyClient(api_token)
             
-            # 2. Configuração do Input (Específico para o ator datadoping)
+            # 2. Configuração do Input (CORRIGIDO)
+            # O erro anterior dizia que faltava o campo "posts". 
+            # Esse ator exige uma lista de links dentro de "posts".
             run_input = {
-                "postUrl": url_input,  # Esse ator costuma usar 'postUrl' ao invés de 'startUrls'
-                "maxComments": 100,    # Limite de segurança (pode aumentar)
+                "posts": [url_input], 
+                "maxComments": 100,    
                 "minDelay": 2,
                 "maxDelay": 5
             }
             
             # 3. Rodar o Ator (Modo Síncrono - Espera terminar)
-            # Isso equivale à 3ª opção do seu print (Run synchronously)
             run = client.actor(actor_id).call(run_input=run_input)
             
             status_text.info("⚙️ Agente finalizou a extração. Baixando dados...")
@@ -76,3 +82,4 @@ if st.button("🚀 Extrair Dados", type="primary"):
                 
         except Exception as e:
             status_text.error(f"Erro ao executar: {e}")
+
