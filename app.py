@@ -4,43 +4,64 @@ import pandas as pd
 import io
 import time
 
-# --- 1. CONFIGURAÇÃO (Obrigatório ser a primeira linha) ---
+# --- 1. CONFIGURAÇÃO ---
 st.set_page_config(page_title="Atlas System", page_icon="🔒", layout="centered")
 
-# --- 2. CSS VISUAL (Para deixar o login bonito e centralizado) ---
+# --- 2. CSS VISUAL (ALTO CONTRASTE) ---
 st.markdown("""
 <style>
-    /* Fundo geral escuro */
+    /* Fundo Geral: Preto Suave (Melhor para leitura) */
     .stApp {
-        background-color: #1E1E1E;
-        color: white;
+        background-color: #121212;
+        color: #FFFFFF;
     }
     
-    /* Esconde menu padrão do Streamlit */
+    /* Esconde itens padrões do Streamlit */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* Caixa de Login Centralizada */
+    /* Caixa de Login: Cinza escuro com borda clara */
     .login-container {
-        background-color: #2D2D2D;
+        background-color: #1E1E1E;
         padding: 40px;
-        border-radius: 15px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-        border: 1px solid #444;
+        border-radius: 12px;
+        border: 1px solid #333333;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.6);
         text-align: center;
         margin-top: 50px;
     }
     
-    /* Inputs estilizados */
+    /* Inputs: Fundo escuro, Texto Branco, Borda Visível */
     .stTextInput > div > div > input {
-        background-color: #404040;
-        color: white;
-        border: 1px solid #555;
+        background-color: #262626;
+        color: #FFFFFF !important;
+        border: 1px solid #4A4A4A;
+        caret-color: #FF4B4B; /* Cor do cursor piscando */
     }
     
-    /* Cores de destaque */
-    h1 { color: #FF4B4B !important; }
+    /* Títulos e Textos */
+    h1 { color: #FFFFFF !important; font-weight: 700; }
+    p { color: #E0E0E0 !important; } /* Cinza bem claro para descrições */
+    
+    /* Botões: Destaque vermelho */
+    .stButton > button {
+        background-color: #FF4B4B;
+        color: white;
+        border: none;
+        font-weight: bold;
+    }
+    .stButton > button:hover {
+        background-color: #FF2B2B;
+        border: 1px solid white;
+    }
+    
+    /* Mensagens de Erro/Sucesso mais legíveis */
+    .stAlert {
+        background-color: #262626;
+        color: white;
+        border: 1px solid #444;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -50,37 +71,31 @@ if 'authenticated' not in st.session_state:
 
 # --- 4. TELA DE LOGIN ---
 def login_screen():
-    # Colunas para centralizar
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        # HTML para a caixa visual
         st.markdown('<div class="login-container">', unsafe_allow_html=True)
-        st.title("🔒 ATLAS SYSTEM")
-        st.markdown("Acesso Restrito")
+        st.title("ATLAS SYSTEM")
+        st.markdown("Acesso Restrito ao Time")
         
-        # Campo de senha
-        senha = st.text_input("Senha", type="password", placeholder="Digite a senha...")
+        senha = st.text_input("Senha de Acesso", type="password", placeholder="Digite aqui...")
         
-        if st.button("ACESSAR", type="primary"):
-            # --- AQUI ESTÁ A SEGURANÇA DINÂMICA ---
-            # O código busca a senha definida nos Secrets.
-            # Se a chave não existir, ele avisa o erro.
+        if st.button("ENTRAR ACESSO", type="primary"):
+            # Verifica se a senha está nos Secrets (Dinâmico)
             if "SENHA_DO_SISTEMA" not in st.secrets:
-                st.error("ERRO: A senha não foi configurada nos Secrets!")
+                st.error("ERRO CONFIG: Senha não definida nos Secrets!")
             elif senha == st.secrets["SENHA_DO_SISTEMA"]:
                 st.session_state.authenticated = True
-                st.success("Logado com sucesso!")
+                st.success("Acesso Liberado!")
                 time.sleep(0.5)
                 st.rerun()
             else:
-                st.error("Senha incorreta")
+                st.error("Senha incorreta.")
         
         st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 5. O APP PRINCIPAL (Extrator) ---
+# --- 5. O APP PRINCIPAL ---
 def main_app():
-    # Botão Sair no canto
     col_out = st.columns([6, 1])
     with col_out[1]:
         if st.button("Sair"):
@@ -88,26 +103,26 @@ def main_app():
             st.rerun()
 
     st.title("🚀 Extrator LinkedIn")
+    st.markdown("Cole o link abaixo para extrair comentários automaticamente.")
     
-    # Verifica Token do Apify
+    # Verifica Token
     if "APIFY_TOKEN" in st.secrets:
         api_token = st.secrets["APIFY_TOKEN"]
     else:
-        st.error("ERRO: Configure o APIFY_TOKEN nos Secrets!")
+        st.error("ERRO: Token do Apify não configurado.")
         st.stop()
         
-    url_input = st.text_input("Link do Post:", placeholder="https://linkedin.com/...")
+    url_input = st.text_input("Link do Post:", placeholder="https://linkedin.com/posts/...")
     
-    if st.button("Extrair Dados"):
+    if st.button("INICIAR EXTRAÇÃO", type="primary"):
         if not url_input:
-            st.warning("Cole o link primeiro.")
+            st.warning("⚠️ Cole o link antes de clicar.")
         else:
-            with st.status("Processando...", expanded=True) as status:
+            with st.status("🔄 Processando...", expanded=True) as status:
                 try:
-                    # Conexão Apify
                     client = ApifyClient(api_token)
                     
-                    # Configuração para o ator datadoping
+                    # Input para o ator
                     run_input = { 
                         "posts": [url_input], 
                         "maxComments": 100, 
@@ -115,7 +130,7 @@ def main_app():
                         "maxDelay": 5 
                     }
                     
-                    status.write("🤖 Robô trabalhando...")
+                    status.write("🤖 Conectando ao Robô...")
                     run = client.actor("datadoping/linkedin-post-comments-scraper").call(run_input=run_input)
                     
                     status.write("📦 Baixando dados...")
@@ -124,28 +139,29 @@ def main_app():
                     if dataset_items:
                         df = pd.DataFrame(dataset_items)
                         
-                        # Filtro de colunas (As que você pediu)
+                        # Filtro de Colunas
                         cols = ['text', 'posted_at', 'comment_url', 'author', 'total_reactions', 'total_replies', 'owner_name', 'owner_profile_url', 'input']
                         cols_final = [c for c in cols if c in df.columns]
                         df = df[cols_final]
                         
-                        # Gera o Excel em memória
                         buffer = io.BytesIO()
                         with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                             df.to_excel(writer, index=False)
                             
-                        status.update(label="Concluído!", state="complete")
+                        status.update(label="✅ Finalizado!", state="complete")
                         
-                        st.success(f"{len(df)} comentários extraídos.")
-                        st.download_button("📥 Download Excel", data=buffer, file_name="linkedin_atlas.xlsx")
+                        st.success(f"Sucesso! {len(df)} comentários encontrados.")
+                        st.download_button("📥 BAIXAR EXCEL AGORA", data=buffer, file_name="linkedin_atlas.xlsx")
                     else:
-                        status.update(label="Sem dados encontrados", state="error")
+                        status.update(label="❌ Sem dados", state="error")
+                        st.error("O robô rodou mas não achou comentários. Verifique o link.")
                         
                 except Exception as e:
-                    st.error(f"Erro: {e}")
+                    st.error(f"Erro técnico: {e}")
 
-# --- 6. ROTEADOR DE TELAS ---
+# --- 6. ROTEADOR ---
 if st.session_state.authenticated:
     main_app()
 else:
     login_screen()
+
