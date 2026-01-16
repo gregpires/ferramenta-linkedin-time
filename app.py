@@ -13,14 +13,13 @@ st.set_page_config(page_title="Atlas Intelligence", page_icon="🌐", layout="ce
 ACTOR_COMMENTS = "datadoping/linkedin-post-comments-scraper"
 ACTOR_LIKES = "harvestapi/linkedin-post-reactions"
 
-# --- 3. CSS CLEAN & MINIMALISTA ---
+# --- 3. CSS CLEAN ---
 st.markdown("""
 <style>
     .stApp { background-color: #F0F2F6; color: #31333F; }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-
     .clean-card {
         background-color: #FFFFFF;
         padding: 40px;
@@ -30,16 +29,12 @@ st.markdown("""
         text-align: center;
         margin-bottom: 20px;
     }
-
     h1 { color: #1F1F1F !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; margin-bottom: 0.5rem; }
     .subtitle { color: #666666; font-size: 1rem; margin-bottom: 2rem; }
-
     .stTextInput > div > div > input { background-color: #FFFFFF; color: #31333F; border: 1px solid #CED4DA; border-radius: 6px; height: 45px; padding-left: 15px; }
     .stTextInput > div > div > input:focus { border-color: #FF4B4B; box-shadow: none; }
-
     .stButton > button { background-color: #FF4B4B; color: white; border: none; border-radius: 6px; height: 48px; font-weight: 600; width: 100%; font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     .stButton > button:hover { background-color: #D43F3F; color: white; border: none; }
-
     div[data-testid="stMetricValue"] { color: #FF4B4B; font-weight: 700; }
 </style>
 """, unsafe_allow_html=True)
@@ -53,7 +48,6 @@ def login_screen():
     if "SENHA_ACESSO" not in st.secrets:
         st.error("⚠️ Configure a SENHA_ACESSO nos Secrets!")
         st.stop()
-
     col1, col2, col3 = st.columns([1, 4, 1])
     with col2:
         st.markdown('<div class="clean-card">', unsafe_allow_html=True)
@@ -61,7 +55,6 @@ def login_screen():
         st.markdown('<p class="subtitle">Acesso Seguro Corporativo</p>', unsafe_allow_html=True)
         senha = st.text_input("Senha de Acesso", type="password", label_visibility="collapsed", placeholder="Digite sua senha...")
         st.markdown("<br>", unsafe_allow_html=True)
-        
         if st.button("ENTRAR NO SISTEMA"):
             if senha == st.secrets["SENHA_ACESSO"]:
                 st.session_state.authenticated = True
@@ -109,7 +102,6 @@ def main_app():
                     })
                     data_c = client.dataset(run_c["defaultDatasetId"]).list_items().items
                     df_c = pd.DataFrame(data_c)
-                    
                     cols_c = ['text', 'posted_at', 'comment_url', 'author', 'owner_name', 'owner_profile_url']
                     if not df_c.empty:
                         df_c = df_c[[c for c in cols_c if c in df_c.columns]]
@@ -132,46 +124,55 @@ def main_app():
                         })
                     df_l = pd.DataFrame(lista_l)
 
-                    # 3. EXCEL (Mantém completo para download)
+                    # 3. EXCEL (Mantido para backup)
                     status.write("📊 Criando Excel...")
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                         if not df_c.empty: df_c.to_excel(writer, index=False, sheet_name='Comentarios')
-                        else: pd.DataFrame(['Sem dados']).to_excel(writer, sheet_name='Comentarios')
-                        
                         if not df_l.empty: df_l.to_excel(writer, index=False, sheet_name='Likes')
-                        else: pd.DataFrame(['Sem dados']).to_excel(writer, sheet_name='Likes')
 
-                    # 4. CLAY (FILTRAGEM NOVA: APENAS NOME E URL)
+                    # 4. CLAY (ENVIO LINHA POR LINHA)
                     if clay_url:
-                        status.write("📡 Otimizando envio para Clay...")
+                        status.write("📡 Enviando para Clay (Linha a Linha)...")
                         
-                        # Prepara lista limpa de Comentários
-                        clay_comments = []
+                        total_itens = len(df_c) + len(df_l)
+                        progresso = st.progress(0)
+                        contador = 0
+
+                        # Enviar Comentários (Um por um)
                         if not df_c.empty and 'owner_name' in df_c.columns:
-                            # Seleciona apenas as colunas necessárias e renomeia para ficar bonito no Clay
-                            clay_comments = df_c[['owner_name', 'owner_profile_url']].rename(
-                                columns={'owner_name': 'Nome', 'owner_profile_url': 'Perfil URL'}
-                            ).to_dict(orient='records')
+                            for index, row in df_c.iterrows():
+                                payload = {
+                                    "Origem": "Comentario",
+                                    "Nome": row.get('owner_name'),
+                                    "Perfil_URL": row.get('owner_profile_url'),
+                                    "Post_Link": url_input,
+                                    "Data_Extracao": datetime.now().isoformat()
+                                }
+                                requests.post(clay_url, json=payload)
+                                contador += 1
+                                progresso.progress(min(contador / total_itens, 1.0))
 
-                        # Prepara lista limpa de Likes
-                        clay_likes = []
+                        # Enviar Likes (Um por um)
                         if not df_l.empty and 'Nome' in df_l.columns:
-                            clay_likes = df_l[['Nome', 'Perfil URL']].to_dict(orient='records')
-
-                        payload = {
-                            "meta": { "usuario": "Time Atlas", "data": datetime.now().isoformat(), "link": url_input },
-                            "resumo": { "qtd_comentarios": len(clay_comments), "qtd_likes": len(clay_likes) },
-                            "dados_comentarios": clay_comments, # Agora vai só Nome e URL
-                            "dados_likes": clay_likes           # Agora vai só Nome e URL
-                        }
-                        requests.post(clay_url, json=payload)
+                            for index, row in df_l.iterrows():
+                                payload = {
+                                    "Origem": "Like",
+                                    "Nome": row.get('Nome'),
+                                    "Perfil_URL": row.get('Perfil URL'),
+                                    "Tipo_Reacao": row.get('Reação'),
+                                    "Post_Link": url_input,
+                                    "Data_Extracao": datetime.now().isoformat()
+                                }
+                                requests.post(clay_url, json=payload)
+                                contador += 1
+                                progresso.progress(min(contador / total_itens, 1.0))
+                        
+                        st.success(f"Enviados {contador} leads para o Clay!")
 
                     status.update(label="Sucesso!", state="complete", expanded=False)
                     
                     st.markdown("<br>", unsafe_allow_html=True)
-                    st.success("Extração finalizada com sucesso.")
-                    
                     m1, m2 = st.columns(2)
                     m1.metric("Comentários", len(df_c))
                     m2.metric("Likes/Reações", len(df_l))
@@ -187,3 +188,4 @@ if st.session_state.authenticated:
     main_app()
 else:
     login_screen()
+
