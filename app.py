@@ -3,165 +3,213 @@ from apify_client import ApifyClient
 import pandas as pd
 import io
 import time
+import requests
+from datetime import datetime
 
 # --- 1. CONFIGURAÇÃO ---
 st.set_page_config(page_title="Atlas System", page_icon="🔒", layout="centered")
 
-# --- 2. CSS VISUAL (ALTO CONTRASTE) ---
+# --- 2. CONFIGURAÇÃO DOS ATORES ---
+# Actor 1: Comentários (DataDoping)
+ACTOR_COMMENTS = "datadoping/linkedin-post-comments-scraper"
+# Actor 2: Likes/Reações (HarvestAPI)
+ACTOR_LIKES = "harvestapi/linkedin-post-reactions"
+
+# --- 3. CSS VISUAL ---
 st.markdown("""
 <style>
-    /* Fundo Geral: Preto Suave (Melhor para leitura) */
-    .stApp {
-        background-color: #121212;
-        color: #FFFFFF;
-    }
-    
-    /* Esconde itens padrões do Streamlit */
+    .stApp { background-color: #1E1E1E; color: white; }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* Caixa de Login: Cinza escuro com borda clara */
     .login-container {
-        background-color: #1E1E1E;
+        background-color: #2D2D2D;
         padding: 40px;
-        border-radius: 12px;
-        border: 1px solid #333333;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+        border-radius: 15px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        border: 1px solid #444;
         text-align: center;
         margin-top: 50px;
     }
-    
-    /* Inputs: Fundo escuro, Texto Branco, Borda Visível */
-    .stTextInput > div > div > input {
-        background-color: #262626;
-        color: #FFFFFF !important;
-        border: 1px solid #4A4A4A;
-        caret-color: #FF4B4B; /* Cor do cursor piscando */
-    }
-    
-    /* Títulos e Textos */
-    h1 { color: #FFFFFF !important; font-weight: 700; }
-    p { color: #E0E0E0 !important; } /* Cinza bem claro para descrições */
-    
-    /* Botões: Destaque vermelho */
-    .stButton > button {
-        background-color: #FF4B4B;
-        color: white;
-        border: none;
-        font-weight: bold;
-    }
-    .stButton > button:hover {
-        background-color: #FF2B2B;
-        border: 1px solid white;
-    }
-    
-    /* Mensagens de Erro/Sucesso mais legíveis */
-    .stAlert {
-        background-color: #262626;
-        color: white;
-        border: 1px solid #444;
-    }
+    .stTextInput > div > div > input { background-color: #404040; color: white; border: 1px solid #555; }
+    h1 { color: #FF4B4B !important; }
+    .stMetric { background-color: #333; padding: 10px; border-radius: 5px; text-align: center; }
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. CONTROLE DE SESSÃO ---
+# --- 4. SESSÃO ---
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
+if 'username' not in st.session_state:
+    st.session_state.username = None
 
-# --- 4. TELA DE LOGIN ---
+# --- 5. TELA DE LOGIN ---
 def login_screen():
+    # Verifica lista de usuários nos Secrets
+    if "usuarios" in st.secrets:
+        USUARIOS_PERMITIDOS = st.secrets["usuarios"]
+    else:
+        st.error("⚠️ Configure os [usuarios] nos Secrets do Streamlit!")
+        st.stop()
+
     col1, col2, col3 = st.columns([1, 2, 1])
-    
     with col2:
         st.markdown('<div class="login-container">', unsafe_allow_html=True)
-        st.title("ATLAS SYSTEM")
-        st.markdown("Acesso Restrito ao Time")
+        st.title("🔒 ATLAS SYSTEM")
+        st.markdown("Intelligence Login")
+        usuario = st.text_input("Usuário")
+        senha = st.text_input("Senha", type="password")
         
-        senha = st.text_input("Senha de Acesso", type="password", placeholder="Digite aqui...")
-        
-        if st.button("ENTRAR ACESSO", type="primary"):
-            # Verifica se a senha está nos Secrets (Dinâmico)
-            if "SENHA_DO_SISTEMA" not in st.secrets:
-                st.error("ERRO CONFIG: Senha não definida nos Secrets!")
-            elif senha == st.secrets["SENHA_DO_SISTEMA"]:
+        if st.button("ACESSAR", type="primary"):
+            if usuario in USUARIOS_PERMITIDOS and USUARIOS_PERMITIDOS[usuario] == senha:
                 st.session_state.authenticated = True
-                st.success("Acesso Liberado!")
-                time.sleep(0.5)
+                st.session_state.username = usuario
                 st.rerun()
             else:
-                st.error("Senha incorreta.")
-        
+                st.error("Credenciais inválidas.")
         st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 5. O APP PRINCIPAL ---
+# --- 6. APP PRINCIPAL ---
 def main_app():
-    col_out = st.columns([6, 1])
-    with col_out[1]:
+    col_info, col_out = st.columns([6, 1])
+    with col_info:
+        st.success(f"Logado como: **{st.session_state.username}**")
+    with col_out:
         if st.button("Sair"):
             st.session_state.authenticated = False
             st.rerun()
 
-    st.title("🚀 Extrator LinkedIn")
-    st.markdown("Cole o link abaixo para extrair comentários automaticamente.")
-    
-    # Verifica Token
-    if "APIFY_TOKEN" in st.secrets:
-        api_token = st.secrets["APIFY_TOKEN"]
-    else:
-        st.error("ERRO: Token do Apify não configurado.")
+    st.title("🚀 Extrator Full LinkedIn")
+    st.markdown("Extrai **Comentários** e **Likes (Reações)** do post simultaneamente.")
+
+    # Verificação de Token
+    if "APIFY_TOKEN" not in st.secrets:
+        st.error("Token Apify não configurado.")
         st.stop()
         
-    url_input = st.text_input("Link do Post:", placeholder="https://linkedin.com/posts/...")
+    api_token = st.secrets["APIFY_TOKEN"]
+    clay_url = st.secrets.get("CLAY_WEBHOOK", "") 
+
+    url_input = st.text_input("Link do Post:", placeholder="https://www.linkedin.com/posts/...")
     
-    if st.button("INICIAR EXTRAÇÃO", type="primary"):
+    if st.button("Iniciar Extração Completa", type="primary"):
         if not url_input:
-            st.warning("⚠️ Cole o link antes de clicar.")
+            st.warning("Por favor, insira um link.")
         else:
-            with st.status("🔄 Processando...", expanded=True) as status:
+            with st.status("🔍 Processando Inteligência...", expanded=True) as status:
                 try:
                     client = ApifyClient(api_token)
                     
-                    # Input para o ator
-                    run_input = { 
+                    # --- FASE 1: COMENTÁRIOS (DataDoping) ---
+                    status.write("💬 Extraindo Comentários...")
+                    run_comments = client.actor(ACTOR_COMMENTS).call(run_input={ 
                         "posts": [url_input], 
-                        "maxComments": 100, 
-                        "minDelay": 2, 
-                        "maxDelay": 5 
-                    }
+                        "maxComments": 200, 
+                        "minDelay": 1, 
+                        "maxDelay": 4 
+                    })
+                    data_comments = client.dataset(run_comments["defaultDatasetId"]).list_items().items
+                    df_comments = pd.DataFrame(data_comments)
                     
-                    status.write("🤖 Conectando ao Robô...")
-                    run = client.actor("datadoping/linkedin-post-comments-scraper").call(run_input=run_input)
-                    
-                    status.write("📦 Baixando dados...")
-                    dataset_items = client.dataset(run["defaultDatasetId"]).list_items().items
-                    
-                    if dataset_items:
-                        df = pd.DataFrame(dataset_items)
-                        
-                        # Filtro de Colunas
-                        cols = ['text', 'posted_at', 'comment_url', 'author', 'total_reactions', 'total_replies', 'owner_name', 'owner_profile_url', 'input']
-                        cols_final = [c for c in cols if c in df.columns]
-                        df = df[cols_final]
-                        
-                        buffer = io.BytesIO()
-                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                            df.to_excel(writer, index=False)
-                            
-                        status.update(label="✅ Finalizado!", state="complete")
-                        
-                        st.success(f"Sucesso! {len(df)} comentários encontrados.")
-                        st.download_button("📥 BAIXAR EXCEL AGORA", data=buffer, file_name="linkedin_atlas.xlsx")
-                    else:
-                        status.update(label="❌ Sem dados", state="error")
-                        st.error("O robô rodou mas não achou comentários. Verifique o link.")
-                        
-                except Exception as e:
-                    st.error(f"Erro técnico: {e}")
+                    # Filtra colunas de comentários
+                    cols_c = ['text', 'posted_at', 'comment_url', 'author', 'owner_name', 'owner_profile_url']
+                    if not df_comments.empty:
+                        # Pega apenas as colunas que existirem no retorno
+                        valid_c = [c for c in cols_c if c in df_comments.columns]
+                        df_comments = df_comments[valid_c]
 
-# --- 6. ROTEADOR ---
+                    # --- FASE 2: LIKES / REAÇÕES (HarvestAPI) ---
+                    status.write("👍 Extraindo Likes e Reações...")
+                    # A HarvestAPI geralmente usa "posts" ou "urls" como lista
+                    run_likes = client.actor(ACTOR_LIKES).call(run_input={
+                        "posts": [url_input],  # Input padrão para mass scrapers
+                        "maxItems": 1000       # Limite de segurança
+                    })
+                    data_likes = client.dataset(run_likes["defaultDatasetId"]).list_items().items
+                    
+                    # Tratamento de dados dos Likes (O retorno é aninhado dentro de 'actor')
+                    lista_likes_limpa = []
+                    for item in data_likes:
+                        # Tenta pegar dados do 'actor' se existir, senão pega do raiz
+                        actor = item.get('actor', {})
+                        lista_likes_limpa.append({
+                            "Nome": actor.get('name') or item.get('name'),
+                            "Headline": actor.get('position') or item.get('headline'),
+                            "Perfil URL": actor.get('linkedinUrl') or actor.get('profileUrl') or item.get('profileUrl'),
+                            "Reação": item.get('reactionType'),
+                            "Imagem": actor.get('pictureUrl') or item.get('pictureUrl')
+                        })
+                    
+                    df_likes = pd.DataFrame(lista_likes_limpa)
+
+                    # --- FASE 3: CONSOLIDAR EXCEL ---
+                    status.write("📊 Gerando Relatório Unificado...")
+                    buffer = io.BytesIO()
+                    
+                    # Cria o Excel com 2 abas
+                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                        # Aba 1: Comentários
+                        if not df_comments.empty:
+                            df_comments.to_excel(writer, index=False, sheet_name='Comentarios')
+                        else:
+                            # Cria aba vazia com aviso se não tiver dados
+                            pd.DataFrame({'Aviso': ['Sem comentários encontrados']}).to_excel(writer, sheet_name='Comentarios')
+                            
+                        # Aba 2: Likes
+                        if not df_likes.empty:
+                            df_likes.to_excel(writer, index=False, sheet_name='Likes')
+                        else:
+                            pd.DataFrame({'Aviso': ['Sem likes encontrados']}).to_excel(writer, sheet_name='Likes')
+
+                    # --- FASE 4: ENVIAR PARA CLAY ---
+                    if clay_url:
+                        status.write("📡 Enviando para Clay...")
+                        payload = {
+                            "meta": {
+                                "usuario": st.session_state.username,
+                                "data_extracao": datetime.now().isoformat(),
+                                "link_post": url_input
+                            },
+                            "resumo": {
+                                "qtd_comentarios": len(df_comments),
+                                "qtd_likes": len(df_likes)
+                            },
+                            "dados_comentarios": df_comments.to_dict(orient='records'),
+                            "dados_likes": df_likes.to_dict(orient='records')
+                        }
+                        try:
+                            r = requests.post(clay_url, json=payload)
+                            if r.status_code == 200:
+                                status.write("✅ Clay recebeu os dados!")
+                            else:
+                                status.warning(f"Erro no Clay: {r.status_code}")
+                        except:
+                            status.warning("Falha na conexão com Clay.")
+
+                    status.update(label="Concluído!", state="complete")
+                    
+                    # Mostra números na tela
+                    col_a, col_b = st.columns(2)
+                    col_a.metric("Comentários Extraídos", len(df_comments))
+                    col_b.metric("Likes Extraídos", len(df_likes))
+                    
+                    # Botão Download
+                    st.download_button(
+                        label="📥 Baixar Excel Completo (Comentários + Likes)",
+                        data=buffer,
+                        file_name=f"Atlas_Full_{st.session_state.username}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+                    
+                except Exception as e:
+                    status.update(label="Erro Crítico", state="error")
+                    st.error(f"Erro detalhado: {e}")
+
+# --- ROTEADOR ---
 if st.session_state.authenticated:
     main_app()
 else:
     login_screen()
+
 
