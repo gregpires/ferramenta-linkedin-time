@@ -16,88 +16,31 @@ ACTOR_LIKES = "harvestapi/linkedin-post-reactions"
 # --- 3. CSS CLEAN & MINIMALISTA ---
 st.markdown("""
 <style>
-    /* Força tema claro e fonte limpa */
-    .stApp {
-        background-color: #F0F2F6; /* Cinza Gelo Suave */
-        color: #31333F; /* Cinza Escuro (Quase preto) para alto contraste */
-    }
-    
-    /* Esconde elementos padrão */
+    .stApp { background-color: #F0F2F6; color: #31333F; }
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
 
-    /* CONTAINER ESTILO CARTÃO (Login e Input) */
     .clean-card {
         background-color: #FFFFFF;
         padding: 40px;
         border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); /* Sombra suave */
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
         border: 1px solid #E6E6EA;
         text-align: center;
         margin-bottom: 20px;
     }
 
-    /* Títulos */
-    h1 {
-        color: #1F1F1F !important;
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-    }
-    
-    .subtitle {
-        color: #666666;
-        font-size: 1rem;
-        margin-bottom: 2rem;
-    }
+    h1 { color: #1F1F1F !important; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; margin-bottom: 0.5rem; }
+    .subtitle { color: #666666; font-size: 1rem; margin-bottom: 2rem; }
 
-    /* Inputs Limpos */
-    .stTextInput > div > div > input {
-        background-color: #FFFFFF;
-        color: #31333F;
-        border: 1px solid #CED4DA;
-        border-radius: 6px;
-        height: 45px;
-        padding-left: 15px;
-    }
-    .stTextInput > div > div > input:focus {
-        border-color: #FF4B4B;
-        box-shadow: none;
-    }
+    .stTextInput > div > div > input { background-color: #FFFFFF; color: #31333F; border: 1px solid #CED4DA; border-radius: 6px; height: 45px; padding-left: 15px; }
+    .stTextInput > div > div > input:focus { border-color: #FF4B4B; box-shadow: none; }
 
-    /* Botão Principal */
-    .stButton > button {
-        background-color: #FF4B4B; /* Vermelho Atlas */
-        color: white;
-        border: none;
-        border-radius: 6px;
-        height: 48px;
-        font-weight: 600;
-        width: 100%;
-        font-size: 16px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .stButton > button:hover {
-        background-color: #D43F3F;
-        color: white;
-        border: none;
-    }
+    .stButton > button { background-color: #FF4B4B; color: white; border: none; border-radius: 6px; height: 48px; font-weight: 600; width: 100%; font-size: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .stButton > button:hover { background-color: #D43F3F; color: white; border: none; }
 
-    /* Botão Secundário (Sair) */
-    .logout-btn {
-        text-align: right; 
-        font-size: 0.8rem; 
-        color: #666; 
-        text-decoration: underline;
-        cursor: pointer;
-    }
-
-    /* Métricas */
-    div[data-testid="stMetricValue"] {
-        color: #FF4B4B;
-        font-weight: 700;
-    }
+    div[data-testid="stMetricValue"] { color: #FF4B4B; font-weight: 700; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -111,16 +54,12 @@ def login_screen():
         st.error("⚠️ Configure a SENHA_ACESSO nos Secrets!")
         st.stop()
 
-    # Layout Centralizado
     col1, col2, col3 = st.columns([1, 4, 1])
-    
     with col2:
         st.markdown('<div class="clean-card">', unsafe_allow_html=True)
         st.markdown("<h1>ATLAS SYSTEM</h1>", unsafe_allow_html=True)
         st.markdown('<p class="subtitle">Acesso Seguro Corporativo</p>', unsafe_allow_html=True)
-        
         senha = st.text_input("Senha de Acesso", type="password", label_visibility="collapsed", placeholder="Digite sua senha...")
-        
         st.markdown("<br>", unsafe_allow_html=True)
         
         if st.button("ENTRAR NO SISTEMA"):
@@ -129,12 +68,10 @@ def login_screen():
                 st.rerun()
             else:
                 st.error("Senha incorreta.")
-        
         st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 6. APP PRINCIPAL ---
 def main_app():
-    # Header Limpo
     c1, c2 = st.columns([8, 1])
     with c2:
         if st.button("Sair"):
@@ -145,7 +82,6 @@ def main_app():
     st.markdown("Extrator de dados do LinkedIn (Comentários + Likes).")
     st.markdown("---")
 
-    # Verifica Tokens
     if "APIFY_TOKEN" not in st.secrets:
         st.error("Token Apify ausente.")
         st.stop()
@@ -153,7 +89,6 @@ def main_app():
     api_token = st.secrets["APIFY_TOKEN"]
     clay_url = st.secrets.get("CLAY_WEBHOOK", "") 
 
-    # Input em Cartão Branco
     st.markdown('<div class="clean-card" style="padding: 30px; text-align: left;">', unsafe_allow_html=True)
     st.markdown("### Novo Relatório")
     url_input = st.text_input("Link do Post", placeholder="Cole a URL do LinkedIn aqui...", label_visibility="collapsed")
@@ -163,7 +98,6 @@ def main_app():
         if not url_input:
             st.warning("⚠️ O campo de link está vazio.")
         else:
-            # Usando st.spinner para um visual mais limpo que o st.status expandido
             with st.status("Processando dados...", expanded=True) as status:
                 try:
                     client = ApifyClient(api_token)
@@ -198,7 +132,7 @@ def main_app():
                         })
                     df_l = pd.DataFrame(lista_l)
 
-                    # 3. EXCEL
+                    # 3. EXCEL (Mantém completo para download)
                     status.write("📊 Criando Excel...")
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
@@ -208,20 +142,33 @@ def main_app():
                         if not df_l.empty: df_l.to_excel(writer, index=False, sheet_name='Likes')
                         else: pd.DataFrame(['Sem dados']).to_excel(writer, sheet_name='Likes')
 
-                    # 4. CLAY
+                    # 4. CLAY (FILTRAGEM NOVA: APENAS NOME E URL)
                     if clay_url:
-                        status.write("📡 Enviando para Clay...")
+                        status.write("📡 Otimizando envio para Clay...")
+                        
+                        # Prepara lista limpa de Comentários
+                        clay_comments = []
+                        if not df_c.empty and 'owner_name' in df_c.columns:
+                            # Seleciona apenas as colunas necessárias e renomeia para ficar bonito no Clay
+                            clay_comments = df_c[['owner_name', 'owner_profile_url']].rename(
+                                columns={'owner_name': 'Nome', 'owner_profile_url': 'Perfil URL'}
+                            ).to_dict(orient='records')
+
+                        # Prepara lista limpa de Likes
+                        clay_likes = []
+                        if not df_l.empty and 'Nome' in df_l.columns:
+                            clay_likes = df_l[['Nome', 'Perfil URL']].to_dict(orient='records')
+
                         payload = {
                             "meta": { "usuario": "Time Atlas", "data": datetime.now().isoformat(), "link": url_input },
-                            "resumo": { "qtd_comentarios": len(df_c), "qtd_likes": len(df_l) },
-                            "dados_comentarios": df_c.to_dict(orient='records'),
-                            "dados_likes": df_l.to_dict(orient='records')
+                            "resumo": { "qtd_comentarios": len(clay_comments), "qtd_likes": len(clay_likes) },
+                            "dados_comentarios": clay_comments, # Agora vai só Nome e URL
+                            "dados_likes": clay_likes           # Agora vai só Nome e URL
                         }
                         requests.post(clay_url, json=payload)
 
                     status.update(label="Sucesso!", state="complete", expanded=False)
                     
-                    # Resultados
                     st.markdown("<br>", unsafe_allow_html=True)
                     st.success("Extração finalizada com sucesso.")
                     
@@ -234,10 +181,8 @@ def main_app():
 
                 except Exception as e:
                     st.error(f"Erro: {e}")
-    
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- ROTEADOR ---
 if st.session_state.authenticated:
     main_app()
 else:
