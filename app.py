@@ -103,12 +103,15 @@ def main_app():
                     data_c = client.dataset(run_c["defaultDatasetId"]).list_items().items
                     df_c = pd.DataFrame(data_c)
                     
-                    # Definição das colunas EXATAS que vão para o Excel
-                    # 'text' é o conteúdo do comentário
-                    cols_c = ['text', 'owner_name', 'owner_profile_url', 'posted_at', 'comment_url']
+                    # --- CORREÇÃO: Não deletamos colunas para o Excel ---
+                    # Para o Excel, vamos tentar organizar, mas se falhar, mandamos tudo.
+                    df_excel_c = df_c.copy() 
                     if not df_c.empty:
-                        # Garante que só pegamos as colunas que realmente vieram
-                        df_c = df_c[[c for c in cols_c if c in df_c.columns]]
+                        cols_preferidas = ['text', 'owner_name', 'owner_profile_url', 'posted_at', 'comment_url']
+                        # Se todas as colunas preferidas existirem, filtramos para ficar bonito.
+                        # Se faltar alguma (ex: post com 1 comentario), mantemos TUDO para garantir.
+                        if all(col in df_c.columns for col in cols_preferidas):
+                            df_excel_c = df_c[cols_preferidas]
 
                     # 2. LIKES
                     status.write("👍 Buscando Reações...")
@@ -128,21 +131,22 @@ def main_app():
                         })
                     df_l = pd.DataFrame(lista_l)
 
-                    # 3. EXCEL (Com Abas Comentários e Likes)
+                    # 3. EXCEL (MODO SEGURO - SALVA TUDO SE PRECISAR)
                     status.write("📊 Criando Excel...")
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        # Aba 1: Comentários (Inclui o TEXTO)
-                        if not df_c.empty: 
-                            df_c.to_excel(writer, index=False, sheet_name='Comentarios')
+                        # Aba 1: Comentários
+                        if not df_excel_c.empty: 
+                            df_excel_c.to_excel(writer, index=False, sheet_name='Comentarios')
                         else:
-                            pd.DataFrame(['Sem comentários']).to_excel(writer, sheet_name='Comentarios')
+                            # Se estiver vazio, cria aba de aviso
+                            pd.DataFrame({'Status': ['Nenhum comentário encontrado pelo robô']}).to_excel(writer, sheet_name='Comentarios')
                             
                         # Aba 2: Likes
                         if not df_l.empty: 
                             df_l.to_excel(writer, index=False, sheet_name='Likes')
                         else:
-                            pd.DataFrame(['Sem likes']).to_excel(writer, sheet_name='Likes')
+                            pd.DataFrame({'Status': ['Nenhum like encontrado']}).to_excel(writer, sheet_name='Likes')
 
                     # 4. CLAY (ENVIO LINHA POR LINHA)
                     if clay_url:
@@ -152,14 +156,15 @@ def main_app():
                         progresso = st.progress(0)
                         contador = 0
 
-                        # Enviar Comentários (Nome + URL)
-                        if not df_c.empty and 'owner_name' in df_c.columns:
+                        # Enviar Comentários
+                        if not df_c.empty:
                             for index, row in df_c.iterrows():
+                                # Tenta pegar os campos com segurança (.get evita erro se a coluna não existir)
                                 payload = {
                                     "Origem": "Comentario",
-                                    "Nome": row.get('owner_name'),
-                                    "Perfil_URL": row.get('owner_profile_url'),
-                                    "Conteudo_Comentario": row.get('text'), # Adicionei o texto aqui também caso queira no Clay
+                                    "Nome": row.get('owner_name') or row.get('author', {}).get('name'), # Tenta pegar de dois lugares
+                                    "Perfil_URL": row.get('owner_profile_url') or row.get('author', {}).get('profileUrl'),
+                                    "Conteudo_Comentario": row.get('text'),
                                     "Post_Link": url_input,
                                     "Data_Extracao": datetime.now().isoformat()
                                 }
@@ -170,8 +175,8 @@ def main_app():
                                 except:
                                     pass
 
-                        # Enviar Likes (Nome + URL + Reação)
-                        if not df_l.empty and 'Nome' in df_l.columns:
+                        # Enviar Likes
+                        if not df_l.empty:
                             for index, row in df_l.iterrows():
                                 payload = {
                                     "Origem": "Like",
