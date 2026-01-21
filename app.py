@@ -102,8 +102,12 @@ def main_app():
                     })
                     data_c = client.dataset(run_c["defaultDatasetId"]).list_items().items
                     df_c = pd.DataFrame(data_c)
-                    cols_c = ['text', 'posted_at', 'comment_url', 'author', 'owner_name', 'owner_profile_url']
+                    
+                    # Definição das colunas EXATAS que vão para o Excel
+                    # 'text' é o conteúdo do comentário
+                    cols_c = ['text', 'owner_name', 'owner_profile_url', 'posted_at', 'comment_url']
                     if not df_c.empty:
+                        # Garante que só pegamos as colunas que realmente vieram
                         df_c = df_c[[c for c in cols_c if c in df_c.columns]]
 
                     # 2. LIKES
@@ -124,12 +128,21 @@ def main_app():
                         })
                     df_l = pd.DataFrame(lista_l)
 
-                    # 3. EXCEL (Mantido para backup)
+                    # 3. EXCEL (Com Abas Comentários e Likes)
                     status.write("📊 Criando Excel...")
                     buffer = io.BytesIO()
                     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                        if not df_c.empty: df_c.to_excel(writer, index=False, sheet_name='Comentarios')
-                        if not df_l.empty: df_l.to_excel(writer, index=False, sheet_name='Likes')
+                        # Aba 1: Comentários (Inclui o TEXTO)
+                        if not df_c.empty: 
+                            df_c.to_excel(writer, index=False, sheet_name='Comentarios')
+                        else:
+                            pd.DataFrame(['Sem comentários']).to_excel(writer, sheet_name='Comentarios')
+                            
+                        # Aba 2: Likes
+                        if not df_l.empty: 
+                            df_l.to_excel(writer, index=False, sheet_name='Likes')
+                        else:
+                            pd.DataFrame(['Sem likes']).to_excel(writer, sheet_name='Likes')
 
                     # 4. CLAY (ENVIO LINHA POR LINHA)
                     if clay_url:
@@ -139,21 +152,25 @@ def main_app():
                         progresso = st.progress(0)
                         contador = 0
 
-                        # Enviar Comentários (Um por um)
+                        # Enviar Comentários (Nome + URL)
                         if not df_c.empty and 'owner_name' in df_c.columns:
                             for index, row in df_c.iterrows():
                                 payload = {
                                     "Origem": "Comentario",
                                     "Nome": row.get('owner_name'),
                                     "Perfil_URL": row.get('owner_profile_url'),
+                                    "Conteudo_Comentario": row.get('text'), # Adicionei o texto aqui também caso queira no Clay
                                     "Post_Link": url_input,
                                     "Data_Extracao": datetime.now().isoformat()
                                 }
-                                requests.post(clay_url, json=payload)
-                                contador += 1
-                                progresso.progress(min(contador / total_itens, 1.0))
+                                try:
+                                    requests.post(clay_url, json=payload)
+                                    contador += 1
+                                    progresso.progress(min(contador / total_itens, 1.0))
+                                except:
+                                    pass
 
-                        # Enviar Likes (Um por um)
+                        # Enviar Likes (Nome + URL + Reação)
                         if not df_l.empty and 'Nome' in df_l.columns:
                             for index, row in df_l.iterrows():
                                 payload = {
@@ -164,9 +181,12 @@ def main_app():
                                     "Post_Link": url_input,
                                     "Data_Extracao": datetime.now().isoformat()
                                 }
-                                requests.post(clay_url, json=payload)
-                                contador += 1
-                                progresso.progress(min(contador / total_itens, 1.0))
+                                try:
+                                    requests.post(clay_url, json=payload)
+                                    contador += 1
+                                    progresso.progress(min(contador / total_itens, 1.0))
+                                except:
+                                    pass
                         
                         st.success(f"Enviados {contador} leads para o Clay!")
 
@@ -188,4 +208,3 @@ if st.session_state.authenticated:
     main_app()
 else:
     login_screen()
-
